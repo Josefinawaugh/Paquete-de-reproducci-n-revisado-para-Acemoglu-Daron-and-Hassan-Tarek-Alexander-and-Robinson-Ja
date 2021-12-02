@@ -1,0 +1,228 @@
+use "citylevel.dta", clear
+
+**Variable Definitions 
+
+gen dlogpop39=log(pop39)-log(pop26)
+gen dlogpop59=log(pop59)-log(pop39)
+gen dlogpop70=log(pop70)-log(pop39)
+gen dlogpop89=log(pop89)-log(pop39)
+gen logpop89=log(pop89)
+gen logpop70=log(pop70)
+gen logpop59=log(pop59)
+gen logpop39=log(pop39)
+gen logpop26=log(pop26)
+
+gen dlogpopnazi=(log(pop39)-log(pop59))*nazi
+gen dlogpop=(log(pop39)-log(pop59))
+
+gen communistvote=pKPRF+pKTRSS
+gen lncommunistvote=log(communistvote)
+gen lnevwage=log(evwage)
+
+**Industry relocation
+*missing entries are zero counts
+
+local years "39 45 59 70 79 89"
+
+foreach x of local years {
+replace ed`x'=0 if ed`x'==. & em`x'!=.
+replace ed`x'_f=0 if ed`x'_f==. & em`x'!=.
+replace em`x'_f=0 if em`x'_f==. & em`x'!=.
+}
+
+*these variables are generated but not used
+drop ed45* ed70* ed79* ed89* em79*  
+
+gen delta_em=(em59-em39)/em59
+gen delta_em_imp=delta_em 
+replace delta_em_imp=0 if em59==0 & em39==0 
+replace delta_em_imp=0 if em59==. & em39==.
+replace delta_em_imp=(em59-em39)/em39 if delta_em_imp==.
+
+gen delta_ed=(ed59-ed39)/ed59
+gen delta_ed_imp=delta_ed 
+replace delta_ed_imp=0 if ed59==0 & ed39==0 
+replace delta_ed_imp=0 if ed59==. & ed39==.
+replace delta_ed_imp=(ed59-ed39)/ed39 if delta_ed_imp==.
+
+**fixed effects
+
+gen ukr=0
+replace ukr=1 if republic89=="Ukrainskaia SSR"
+gen rus=0
+replace rus=1 if republic89=="RSFSR"
+gen bel=0
+replace bel=1 if republic89=="Belorusskaia SSR"
+
+gen rusnazi=0
+replace rusnazi=1 if rus==1 & nazi==1
+
+
+**Transoforming evwage into PPPUSD
+
+replace evwage=evwage/9.2
+
+
+**Labelling
+
+label variable logpop39 "Log City Pop. '39"
+label variable pj39 "Percent Jewish Pop. '39"
+label variable logpop26 "Log City Pop. '26"
+label variable nazi "German Occupation Dummy"
+label variable nazipj "Percent Jewish Pop.~'39 x Occupation"
+label variable deglat "Degrees Latitude"
+label variable deglong "Degrees Longitude"
+label variable dlogpopnazi "Ex-post Pop. Change x Occupation"
+label variable dlogpop "Ex-post Pop. Change"
+label variable delta_ed_imp "Growth Defense Industry '39-'59"
+label variable delta_em_imp "Relocated Defense Industry '39-'59"
+
+
+**Descriptive stats
+
+replace em39=0 if em39==. & rus==1
+replace em45=0 if em45==. & rus==1
+replace em89=0 if em89==. & rus==1
+
+gen nazihighpj39=0
+replace nazihighpj39=1 if nazi==1& pj39>0.4149
+
+local descriptive pop39 pop89 pj39 evwage communistvote em39 em45 em89
+
+tablemat `descriptive' if rus==1 &nazi!=. , stat(mean)  by(nazi nazihighpj39)
+tablemat `descriptive' if rus==1 &nazi!=., stat(sd)  by(nazi nazihighpj39)
+tablemat `descriptive' if rus==1 &nazi!=., stat(n)  by(nazi nazihighpj39)
+
+
+**Footnote
+areg logpop89 nazipj nazi logpop39 if rus==1 ,absorb(district89) robust
+
+
+**Table II
+
+areg logpop89 nazipj nazi pj39 logpop39 if rus==1 ,absorb(district89) robust
+estimates store drI, title(" ")
+areg logpop89 nazipj nazi pj39 logpop39 deglat deglong if rus==1 ,absorb(district89) robust
+estimates store drII, title(" ")
+areg logpop89 nazipj nazi pj39 logpop39 deglat deglong delta_ed_imp delta_em_imp if rus==1 ,absorb(district89) robust
+estimates store drIII, title(" ")
+areg logpop89 nazipj nazi pj39 logpop39 deglat deglong delta_ed_imp delta_em_imp if rus==1 , absorb(oblast89) robust
+estimates store drIV, title(" ")
+reg logpop89 nazipj nazi pj39 logpop39 deglat deglong delta_ed_imp delta_em_imp if rus==1 , robust
+estimates store drV, title(" ")
+areg logpop89 nazipj nazi pj39 logpop39 deglat deglong delta_ed_imp delta_em_imp if rus==1 [aweight=pop39],absorb(district89) robust
+estimates store drVI, title(" ")
+estout drI drII drIII drIV drV drVI using regrus1.tex, replace style(tex)  drop(_cons ) ml( ,none) collabels(, none) label cells(b(nostar fmt(%9.3f)) se(par)) stats( N, fmt( %9.0g)labels( "N")) starlevels(+ 0.10 * 0.05)
+
+
+**Table III
+
+local subsamples rus rusnazi
+foreach x in `subsamples'{
+areg logpop39 nazipj nazi pj39 logpop26 deglat deglong delta_ed_imp delta_em_imp  if `x'==1 ,absorb(district89) robust
+estimates store drI, title(" ")
+areg logpop59 nazipj nazi pj39 logpop39 deglat deglong delta_ed_imp delta_em_imp  if `x'==1 ,absorb(district89) robust
+estimates store drII, title(" ")
+areg logpop70 nazipj nazi pj39 logpop39 deglat deglong delta_ed_imp delta_em_imp  if `x'==1 ,absorb(district89) robust
+estimates store drIII, title(" ")
+areg logpop89 nazipj nazi pj39 logpop39 deglat deglong delta_ed_imp delta_em_imp  if `x'==1 ,absorb(district89) robust
+estimates store drIV, title(" ")
+xi: ivreg logpop89 nazipj nazi pj39 (logpop39=logpop26) deglat deglong delta_ed_imp delta_em_imp  i.district89 if `x'==1 ,robust
+estimates store drV, title(" ")
+estout drI drII drIII drIV drV using reg`x'2.tex, replace style(tex) order(nazipj nazi pj39 logpop26 logpop39) drop(_cons _I* deglat deglong delta_ed_imp delta_em_imp) ml( ,none) collabels(, none) label cells(b(nostar fmt(%9.3f)) se(par)) stats( N, fmt( %9.0g)labels( "N")) starlevels(+ 0.10 * 0.05)
+estout drI drII drIII drIV drV using reg`x'2short.tex, replace style(tex) order(nazipj nazi pj39 logpop26 logpop39) keep(nazipj logpop26 logpop39) ml( ,none) collabels(, none) label cells(b(nostar fmt(%9.3f)) se(par)) stats( N, fmt( %9.0g)labels( "N")) starlevels(+ 0.10 * 0.05)
+}
+
+
+**Ukraine
+
+*Table A.5 Panel A
+areg logpop89 nazipj nazi pj39 logpop39 if ukr==1 ,absorb(district89) robust
+estimates store drI, title(" ")
+areg logpop89 nazipj nazi pj39 logpop39 deglat deglong if ukr==1 ,absorb(district89) robust
+estimates store drII, title(" ")
+reg logpop89 nazipj nazi pj39 logpop39 deglat deglong if ukr==1 ,robust
+estimates store drIII, title(" ")
+areg logpop89 nazipj nazi pj39 logpop39 deglat deglong if ukr==1 [aweight=pop39], absorb(district89) robust
+estimates store drV, title(" ")
+estout drI drII drIII drV using regukr1smallnooblastfe.tex, replace style(tex)  drop(_cons nazi pj39 logpop39 deglat deglong , relax) ml( ,none) collabels(, none) label cells(b(nostar fmt(%9.3f)) se(par)) stats( N, fmt( %9.0g)labels( "N")) starlevels(+ 0.10 * 0.05)
+estout drI drII drIII drV ,   drop(_cons nazi pj39 logpop39 deglat deglong ,relax ) ml( ,none) collabels(, none) label cells(b(nostar fmt(%9.3f)) se(par)) stats( N, fmt( %9.0g)labels( "N")) starlevels(+ 0.10 * 0.05)
+
+*Table A.5 Panel B
+
+local subsamples ukr
+
+foreach x in `subsamples'{
+areg logpop39 nazipj nazi pj39 logpop26 deglat deglong delta_ed_imp delta_em_imp  if `x'==1 ,absorb(district89) robust
+estimates store drI, title(" ")
+areg logpop59 nazipj nazi pj39 logpop39 deglat deglong delta_ed_imp delta_em_imp  if `x'==1 ,absorb(district89) robust
+estimates store drII, title(" ")
+areg logpop70 nazipj nazi pj39 logpop39 deglat deglong delta_ed_imp delta_em_imp  if `x'==1 ,absorb(district89) robust
+estimates store drIII, title(" ")
+xi: ivreg logpop89 nazipj nazi pj39 delta_ed_imp delta_em_imp  (logpop39=logpop26) deglat deglong i.district89 if `x'==1 ,robust
+estimates store drIV, title(" ")
+estout drI drII drIII drIV using reg`x'2smallnoiv.tex, replace style(tex)  keep(nazipj) ml( ,none) collabels(, none) label cells(b(nostar fmt(%9.3f)) se(par)) stats( N, fmt( %9.0g)labels( "N")) starlevels(+ 0.10 * 0.05)
+}
+
+
+**Table IV
+
+areg lnevwage nazipj nazi pj39 logpop39 deglat deglong if rus==1 ,absorb(district89) robust
+estimates store drI, title(" ")
+areg lnevwage nazipj nazi pj39 logpop39 deglat deglong delta_ed_imp delta_em_imp if rus==1 ,absorb(district89) robust
+estimates store drII, title(" ")
+reg lnevwage nazipj nazi pj39 logpop39 deglat deglong delta_ed_imp delta_em_imp if rus==1 ,robust
+estimates store drIII, title(" ")
+areg lnevwage nazipj nazi pj39 logpop39 deglat deglong delta_ed_imp delta_em_imp if rus==1 [aweight=pop39], absorb(district89) robust
+estimates store drIV, title(" ")
+areg lnevwage nazipj nazi pj39 logpop39 deglat deglong delta_ed_imp delta_em_imp dlogpopnazi dlogpop if rus==1 ,absorb(district89) robust
+estimates store drV, title(" ")
+areg lnevwage nazipj nazi pj39 logpop39 deglat deglong delta_ed_imp delta_em_imp if rus==1 & town89!="Smolensk",absorb(district89) robust
+estimates store drVI, title(" ")
+reg lnevwage nazipj logpop39 deglat deglong delta_ed_imp delta_em_imp if rusnazi==1 ,robust
+estimates store drVII, title(" ")
+reg lnevwage nazipj logpop39 deglat deglong delta_ed_imp delta_em_imp if rusnazi==1 & town89!="Smolensk", robust
+estimates store drVIII, title(" ")
+estout drI drII drIII drIV drV drVI drVII drVIII using regevwage.tex, replace style(tex)  drop(_cons logpop39 deglat deglong delta_ed_imp delta_em_imp ) ml( ,none) collabels(, none) label cells(b(nostar fmt(%9.3f)) se(par)) stats( N, fmt( %9.0g)labels( "N")) starlevels(+ 0.10 * 0.05)
+
+areg lncommunistvote nazipj nazi pj39 logpop39 deglat deglong if rus==1 ,absorb(district89) robust
+estimates store drI, title(" ")
+areg lncommunistvote nazipj nazi pj39 logpop39 deglat deglong delta_ed_imp delta_em_imp if rus==1 ,absorb(district89) robust
+estimates store drII, title(" ")
+reg lncommunistvote nazipj nazi pj39 logpop39 deglat deglong delta_ed_imp delta_em_imp if rus==1 ,robust
+estimates store drIII, title(" ")
+areg lncommunistvote nazipj nazi pj39 logpop39 deglat deglong delta_ed_imp delta_em_imp if rus==1 [aweight=pop39], absorb(district89) robust
+estimates store drIV, title(" ")
+areg lncommunistvote nazipj nazi pj39 logpop39 deglat deglong delta_ed_imp delta_em_imp dlogpopnazi dlogpop if rus==1 ,absorb(district89) robust
+estimates store drV, title(" ")
+areg lncommunistvote nazipj nazi pj39 logpop39 deglat deglong delta_ed_imp delta_em_imp if rus==1 & town89!="Smolensk",absorb(district89) robust
+estimates store drVI, title(" ")
+reg lncommunistvote nazipj logpop39 deglat deglong delta_ed_imp delta_em_imp if rusnazi==1 ,robust
+estimates store drVII, title(" ")
+reg lncommunistvote nazipj logpop39 deglat deglong delta_ed_imp delta_em_imp if rusnazi==1 & town89!="Smolensk", robust
+estimates store drVIII, title(" ")
+estout drI drII drIII drIV drV drVI drVII drVIII using regcommi.tex, replace style(tex)  drop(_cons logpop39 deglat deglong delta_ed_imp delta_em_imp ) ml( ,none) collabels(, none) label cells(b(nostar fmt(%9.3f)) se(par)) stats( N, fmt( %9.0g)labels( "N")) starlevels(+ 0.10 * 0.05)
+
+
+**Figure II
+
+xi: reg logpop89 nazipj nazi pj39 logpop39 deglat deglong delta_ed_imp delta_em_imp i.district89 if rus==1 & town89!="Derbent",robust
+avplot nazipj, mlab(town89) msize(small) mlabsize(vsmall)  mlabcolor(gs9) ytitle(Log City Population '89)xtitle(Percent Jewish Pop. '39 x Occupation) name(two)scheme(s2mono)
+xi: reg logpop89 nazipj nazi pj39 logpop39 deglat deglong delta_ed_imp delta_em_imp i.district89 if rus==1 ,robust
+avplot nazipj, mlab(town89) msize(small) mlabsize(vsmall)  mlabcolor(gs9) ytitle(Log City Population '89)xtitle(Percent Jewish Pop. '39 x Occupation) name(one)scheme(s2mono)
+graph combine one two
+graph drop one two
+graph export logpop89nazipj.eps, replace
+
+
+**Figure III
+
+xi: reg logpop89 nazipj logpop39 deglat deglong delta_ed_imp delta_em_imp i.district89 if rusnazi==1 ,robust
+quietly: avplot nazipj, mlab(town89) msize(small) mlabsize(vsmall)  mlabcolor(gs9) ytitle(Log City Population '89)xtitle(Percent Jewish Pop. '39 x Occupation)scheme(s2mono)
+graph export logpop89nazipjrusnazi.eps, replace
+
+
+**Figure V
+xi: reg lnevwage nazipj nazi pj39 logpop39 deglat deglong delta_ed_imp delta_em_imp i.district89 if rus==1, robust
+quietly: avplot nazipj, mlab(town89) msize(small) mlabsize(vsmall)  mlabcolor(gs9) ytitle(Log Average Wage '02)xtitle(Percent Jewish Pop. '39 x Occupation)scheme(s2mono)
+graph export lnevwagenazipj.eps, replace
